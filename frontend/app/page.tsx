@@ -3,26 +3,50 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import CameraCapture from '@/components/CameraCapture';
-import AgentPanel from '@/components/AgentPanel';
 import EmployeeView from '@/components/EmployeeView';
 import { OnboardingSession, EmployeeData, AgentMessage } from '@/lib/liveSession';
 import { createSession, saveEmployee } from '@/lib/api';
+import { useAgent } from '@/lib/agentContext';
 
 type AppState = 'idle' | 'processing' | 'dialog' | 'preview' | 'saved' | 'error';
 
+function normalizeName(raw: string): string {
+  return raw.trim().replace(/\S+/g, w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase());
+}
+
 export default function Home() {
   const [appState, setAppState] = useState<AppState>('idle');
-  const [agentMessage, setAgentMessage] = useState('');
   const [employee, setEmployee] = useState<(EmployeeData & { employee_id?: string }) | null>(null);
   const [errorMsg, setErrorMsg] = useState('');
 
   const sessionRef = useRef<OnboardingSession | null>(null);
   const sessionIdRef = useRef<string>('');
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
+
+  const { enterOnboarding, setOnboardingMessage, exitOnboarding, autoStartOnboarding, clearAutoStart, setUiContext } = useAgent();
+
+  // Auto-open file picker when agent navigates here with autostart flag
+  useEffect(() => {
+    if (autoStartOnboarding && appState === 'idle') {
+      clearAutoStart();
+      // Small delay to ensure the page is rendered before triggering the picker
+      setTimeout(() => fileInputRef.current?.click(), 100);
+    }
+  }, [autoStartOnboarding, appState, clearAutoStart]);
 
   const handleCapture = useCallback(async (base64: string, mimeType: string) => {
     setAppState('processing');
-    setAgentMessage('');
+    enterOnboarding(
+      (text: string) => sessionRef.current?.sendText(text),
+      () => {
+        sessionRef.current?.close();
+        sessionRef.current = null;
+        sessionIdRef.current = '';
+        setAppState('idle');
+        setEmployee(null);
+      },
+    );
 
     try {
       const { session_id } = await createSession();
@@ -30,19 +54,20 @@ export default function Home() {
 
       const liveSession = new OnboardingSession(async (msg: AgentMessage) => {
         if (msg.type === 'chunk') {
-          setAgentMessage(msg.text ?? '');
+          setOnboardingMessage(msg.text ?? '');
           setAppState('dialog');
         } else if (msg.type === 'status') {
-          // Interrupt: zurück zu "processing" während Agent antwortet
           setAppState('processing');
-          setAgentMessage('');
+          setOnboardingMessage('');
         } else if (msg.type === 'complete' && msg.employee) {
-          setEmployee(msg.employee);
+          setEmployee({ ...msg.employee, name: normalizeName(msg.employee.name ?? '') });
           setAppState('preview');
           sessionRef.current?.close();
+          exitOnboarding(); // minimizes panel — focus shifts to employee preview card
         } else if (msg.type === 'error') {
           setErrorMsg(msg.text ?? 'Something went wrong.');
           setAppState('error');
+          exitOnboarding();
         }
       });
 
@@ -51,19 +76,21 @@ export default function Home() {
     } catch (err) {
       setErrorMsg(err instanceof Error ? err.message : 'Something went wrong.');
       setAppState('error');
+      exitOnboarding();
     }
-  }, []);
+  }, [enterOnboarding, setOnboardingMessage, exitOnboarding]);
 
   const handleConfirm = useCallback(async (editedData: EmployeeData) => {
     try {
       const saved = await saveEmployee({ session_id: sessionIdRef.current, ...editedData });
       setEmployee({ ...editedData, employee_id: saved.employee_id });
       setAppState('saved');
+      exitOnboarding();
     } catch (err) {
       setErrorMsg(err instanceof Error ? err.message : 'Failed to save.');
       setAppState('error');
     }
-  }, []);
+  }, [exitOnboarding]);
 
   const handleDiscard = useCallback(() => {
     sessionRef.current?.close();
@@ -71,21 +98,36 @@ export default function Home() {
     sessionIdRef.current = '';
     setAppState('idle');
     setEmployee(null);
-  }, []);
-
-  const handleReply = useCallback((reply: string) => {
-    sessionRef.current?.sendText(reply);
-  }, []);
+    exitOnboarding();
+  }, [exitOnboarding]);
 
   const handleReset = useCallback(() => {
     sessionRef.current?.close();
     sessionRef.current = null;
     sessionIdRef.current = '';
     setAppState('idle');
-    setAgentMessage('');
     setEmployee(null);
     setErrorMsg('');
-  }, []);
+    exitOnboarding();
+  }, [exitOnboarding]);
+
+  // Scroll to top on state transitions — fixes mobile viewport drift after soft keyboard dismisses
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [appState]);
+
+  // Keep agent informed of current UI state so chat context is accurate
+  useEffect(() => {
+    const map: Record<AppState, string> = {
+      idle:       'home-scanner',
+      processing: 'home-scanner',
+      dialog:     'home-onboarding',
+      preview:    'home-employee-preview',
+      saved:      'home-employee-saved',
+      error:      'home-error',
+    };
+    setUiContext(map[appState]);
+  }, [appState, setUiContext]);
 
   // ESC: abort active session or discard preview
   useEffect(() => {
@@ -112,7 +154,7 @@ export default function Home() {
 
       {(appState === 'idle' || appState === 'processing') && (
         <div className="flex flex-col items-center gap-6 w-full max-w-md">
-          <CameraCapture onCapture={handleCapture} disabled={appState === 'processing'} />
+          <CameraCapture onCapture={handleCapture} disabled={appState === 'processing'} fileInputRef={fileInputRef} />
           {appState === 'processing' && (
             <div className="flex items-center gap-2 text-gray-500 text-sm">
               <div className="w-4 h-4 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
@@ -140,14 +182,6 @@ export default function Home() {
           </button>
         </div>
       )}
-
-
-      {/* Panel sichtbar sobald Session läuft (dialog + processing für Unterbrechungen) */}
-      <AgentPanel
-        message={agentMessage}
-        onReply={handleReply}
-        visible={(appState === 'dialog' || appState === 'processing') && !!sessionRef.current}
-      />
     </main>
   );
 }

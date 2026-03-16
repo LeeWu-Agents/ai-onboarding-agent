@@ -6,6 +6,15 @@ Built for the **Gemini Live Agent Challenge** · Category: **Live Agents**
 
 ---
 
+## Live Demo
+
+| | URL |
+|---|---|
+| **Frontend** | https://glac-frontend-842528390248.us-central1.run.app |
+| **Backend** | https://glac-backend-842528390248.us-central1.run.app/health |
+
+---
+
 ## What It Does
 
 The AI Onboarding Agent converts real-world documents directly into structured system records through a natural, live conversation.
@@ -19,7 +28,7 @@ Instead of filling out forms, users take a photo of a document. The agent:
 5. Saves a clean, structured employee record
 6. Optionally generates a full employment contract (AI-written, downloadable)
 
-The persistent floating **AI Agent bubble** (bottom-right) is available on every page for quick access. Employees can be browsed, edited, deleted, and bulk-imported via CSV on the `/employees` page.
+The **AI Agent panel** (bottom-right) is available on every page at all times. Outside of an active onboarding, it acts as a general assistant: ask questions about employees, navigate the app, or start a new onboarding — all through natural conversation.
 
 **Demo use case:** Employee onboarding via ID card photo.
 
@@ -27,53 +36,31 @@ The persistent floating **AI Agent bubble** (bottom-right) is available on every
 
 ## Architecture
 
-```mermaid
-flowchart LR
+![Architecture Diagram](architecture-diagram%20definitiv.png)
 
-  USER(["👤 HR Staff"])
+> Interactive version: open `architecture-diagram-kropf.html` in a browser.
 
-  subgraph FRONTEND["🖥️  Browser / Frontend  ·  Next.js · React · Tailwind"]
-    direction TB
-    SHELL["UI Shell\nHeader · Footer · AgentBubble"]
-    INPUT["Document Input\nScan · Upload · Compress ≤800px"]
-    WSCLIENT["WebSocket Client\nliveSession.ts"]
-    DIALOG["Agent Dialog\nMessages · Quick Replies · Voice"]
-    PROFILE["Profile Flow\nPreview → Edit → Confirm → /employees · /contract"]
-  end
+**Onboarding data flow:**
 
-  subgraph BACKEND["⚙️  Backend  ·  Node.js · Express · TypeScript"]
-    direction TB
-    SERVER["Express + WebSocket Server\nPort 3001"]
-    AGENT["Agent Session\nStreaming · Multi-Turn History · AbortController"]
-    DATA["Data Layer\nIn-Memory Store  →  Firestore"]
-  end
+```
+HR Staff
+  → [scan / upload] → CameraCapture → Image Compression (≤800px, 70% JPEG)
+  → [base64 image]  → liveSession.ts (WebSocket client)
+  → [WebSocket]     → Express Server (port 3001) → /ws/agent
+  → [stream]        → AgentSession → Gemini 2.5 Flash (HTTPS streaming)
+  ← [chunks]        ← AgentSession ← Gemini
+  ← [events]        ← WebSocket    ← Server
+  → [confirm]       → REST API     → In-Memory Store → /employees
+```
 
-  subgraph GOOGLE["☁️  Google AI Platform"]
-    GEMINI["Gemini 2.5 Flash\ngenerateContentStream · @google/genai v1.44\nSystem Instruction · Doc Validation · DOB Rule"]
-  end
+**Idle chat data flow:**
 
-  USER -->|"scan / upload"| INPUT
-  INPUT -->|"base64 image"| WSCLIENT
-  WSCLIENT -->|"WebSocket"| SERVER
-  SERVER -->|"start stream"| AGENT
-  SERVER --> DATA
-  AGENT --> DATA
-  AGENT <-->|"HTTPS streaming"| GEMINI
-  SERVER -->|"chunks / events"| WSCLIENT
-  WSCLIENT -->|"agent messages"| DIALOG
-  DIALOG -->|"reply / voice"| WSCLIENT
-  WSCLIENT -->|"complete event"| PROFILE
-  PROFILE -->|"confirm → save"| DATA
-
-  classDef frontend fill:#EFF6FF,stroke:#3B82F6,stroke-width:1.2px,color:#0F172A
-  classDef backend  fill:#F8FAFC,stroke:#64748B,stroke-width:1.1px,color:#1E293B
-  classDef gemini   fill:#FEF9C3,stroke:#CA8A04,stroke-width:1.1px,color:#713F12
-  classDef user     fill:#F0FDF4,stroke:#22C55E,stroke-width:1.5px,color:#14532D
-
-  class SHELL,INPUT,WSCLIENT,DIALOG,PROFILE frontend
-  class SERVER,AGENT,DATA backend
-  class GEMINI gemini
-  class USER user
+```
+HR Staff
+  → [message / voice] → AgentPanel → WebSocket → /ws/chat
+  → [stream]          → ChatSession → Gemini 2.5 Flash
+  ← [chunks / action] ← ChatSession ← Gemini
+  ← [navigate / reply]← AgentPanel
 ```
 
 ---
@@ -82,16 +69,41 @@ flowchart LR
 
 | Layer | Technology |
 |-------|-----------|
-| Frontend | Next.js (TypeScript), React 19, Tailwind CSS 4 |
+| Frontend | Next.js 16 (TypeScript), React 19, Tailwind CSS 4 |
 | AI | Gemini 2.5 Flash, `generateContentStream` |
 | Backend | Node.js / Express (TypeScript), WebSocket (`ws`) |
-| Database | Google Firestore |
+| Database | In-Memory Store (demo) |
 | Hosting | Google Cloud Run |
 | SDK | `@google/genai` v1.44 |
 
 ---
 
-## Setup
+## Google Cloud Deployment
+
+Both services are deployed on **Google Cloud Run** (region: `us-central1`, project: `gen-lang-client-0014383010`).
+
+**Redeploy after changes:**
+
+```bash
+# Backend
+cd backend
+gcloud run deploy glac-backend \
+  --source . --region us-central1 --platform managed --allow-unauthenticated \
+  --set-env-vars "GEMINI_API_KEY=your_key,FRONTEND_URL=https://glac-frontend-842528390248.us-central1.run.app" \
+  --port 3001
+
+# Frontend
+cd frontend
+gcloud run deploy glac-frontend \
+  --source . --region us-central1 --platform managed --allow-unauthenticated \
+  --port 3000
+```
+
+Both services use multi-stage `Dockerfile`s (`node:20-alpine`). The frontend uses Next.js `standalone` output for a minimal production image.
+
+---
+
+## Local Setup
 
 ### Prerequisites
 
@@ -128,7 +140,7 @@ npm run dev
 ```
 
 Backend runs on `http://localhost:3001`
-WebSocket on `ws://localhost:3001/ws/agent`
+WebSocket endpoints: `ws://localhost:3001/ws/agent` (onboarding) · `ws://localhost:3001/ws/chat` (idle chat)
 
 ### 4. Start the frontend
 
@@ -142,20 +154,20 @@ Frontend runs on `http://localhost:3000`
 
 ### 5. Open the app
 
-Open [http://localhost:3000](http://localhost:3000) in your browser and allow camera access when prompted.
+Open [http://localhost:3000](http://localhost:3000) in your browser.
 
 ---
 
 ## Usage
 
-1. Click **Scan Document** or **Upload**
-2. Take a photo of an ID card
-3. The agent detects the person and asks follow-up questions
-4. Answer via text, quick-reply buttons, or voice (Chrome/Edge)
-5. Review the profile preview — confirm, edit inline, or discard
-6. Done — employee profile saved
-7. Optional: let the agent generate a full employment contract → download as `.txt`
-8. Browse all employees at `/employees` — edit, delete, CSV import/export
+1. Click **Scan Document** and select or photograph an ID card
+2. The agent streams results and asks follow-up questions for missing fields
+3. Answer via text, quick-reply buttons, or voice (Chrome/Edge)
+4. Review the profile preview — confirm, edit inline, or discard
+5. Done — employee profile saved
+6. Optional: let the agent generate a full employment contract → download as `.txt`
+7. Browse all employees at `/employees` — edit, delete, CSV import/export
+8. Use the **AI Agent panel** at any time to ask questions or navigate the app
 
 ---
 
@@ -165,34 +177,39 @@ Open [http://localhost:3000](http://localhost:3000) in your browser and allow ca
 ai-onboarding-agent/
 ├── README.md
 ├── CHANGELOG.md
-├── architecture-diagram.html     ← Interactive architecture (open in browser)
+├── architecture-diagram definitiv.png   ← Architecture diagram (PNG)
+├── architecture-diagram-kropf.html      ← Interactive architecture (open in browser)
 ├── frontend/
+│   ├── Dockerfile                       ← Multi-stage, Next.js standalone
 │   ├── app/
-│   │   ├── layout.tsx            ← Root layout: Header + Footer shell
-│   │   ├── page.tsx              ← Main onboarding flow
-│   │   ├── employees/page.tsx    ← Employees list (CSV import/export, edit, delete)
-│   │   └── contract/page.tsx     ← AI contract generation + download
+│   │   ├── layout.tsx                   ← Root layout: Header + AgentWrapper + Footer
+│   │   ├── page.tsx                     ← Main onboarding flow
+│   │   ├── employees/page.tsx           ← Employees list (CSV import/export, edit, delete)
+│   │   └── contract/page.tsx            ← AI contract generation + download
 │   ├── components/
-│   │   ├── Header.tsx            ← Navigation bar (logo + links)
-│   │   ├── Footer.tsx            ← Privacy notice + copyright
-│   │   ├── AgentBubble.tsx       ← Persistent floating agent button
-│   │   ├── AgentPanel.tsx        ← Agent dialog, voice, quick-reply
-│   │   ├── CameraCapture.tsx     ← Camera / Upload + compression
-│   │   └── EmployeeView.tsx      ← Profile preview, inline edit, confirm
+│   │   ├── Header.tsx                   ← Navigation bar (logo + links)
+│   │   ├── Footer.tsx                   ← Privacy notice + copyright
+│   │   ├── AgentWrapper.tsx             ← Client wrapper: AgentProvider + AgentPanel in layout
+│   │   ├── AgentPanel.tsx               ← Always-on agent UI: chat, voice, quick-reply, navigation
+│   │   ├── CameraCapture.tsx            ← Document upload + client-side compression
+│   │   └── EmployeeView.tsx             ← Profile preview, inline edit, confirm
 │   └── lib/
-│       ├── liveSession.ts        ← WebSocket client (OnboardingSession)
-│       └── api.ts                ← Backend REST calls
+│       ├── agentContext.tsx             ← React context: agent mode, onboarding lifecycle
+│       ├── liveSession.ts               ← WebSocket client (OnboardingSession)
+│       └── api.ts                       ← Backend REST calls
 ├── backend/
+│   ├── Dockerfile                       ← Multi-stage, node:20-alpine
 │   └── src/
-│       ├── server.ts             ← Express + WebSocket server
+│       ├── server.ts                    ← Express + dual WebSocket server (noServer routing)
 │       ├── services/
-│       │   ├── agentSession.ts   ← Gemini dialog + streaming (core)
-│       │   └── store.ts          ← In-memory store (→ Firestore)
+│       │   ├── agentSession.ts          ← Onboarding agent: Gemini streaming, data extraction
+│       │   ├── chatSession.ts           ← Idle chat agent: employee queries, navigation signals
+│       │   └── store.ts                 ← In-memory store
 │       └── routes/
 │           ├── sessions.ts
-│           ├── employees.ts      ← GET / POST / PUT / DELETE
-│           └── contract.ts       ← POST /api/contract
-└── smoke-test/                   ← Smoke tests (text, multi-turn, vision)
+│           ├── employees.ts             ← GET / POST / PUT / DELETE
+│           └── contract.ts              ← POST /api/contract
+└── smoke-test/                          ← Smoke tests (text, multi-turn, vision)
 ```
 
 ---
@@ -206,7 +223,7 @@ In real deployments, personal data must be handled in accordance with applicable
 
 ## Demo Video
 
-[Link to demo video]
+[Demo Video on YouTube](https://www.youtube.com/watch?v=XJjfxDNQwdg)
 
 ---
 

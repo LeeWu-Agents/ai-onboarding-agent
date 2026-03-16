@@ -18,7 +18,25 @@ body {
   font-family: Arial, Helvetica, sans-serif;
 }
 
+/* Prevent iOS Safari auto-zoom on input focus (requires font-size >= 16px) */
+@media screen and (max-width: 768px) {
+  input, textarea, select {
+    font-size: 16px !important;
+  }
+}
+
 /* Next.js dev indicator — align with agent bubble */
 nextjs-portal {
   bottom: 64px !important;
+}
+
+/* Click flash — visible tap feedback for demo recording.
+   Uses scale transform: GPU-accelerated, works reliably on iOS Safari. */
+@keyframes click-flash {
+  0%   { transform: scale(1); }
+  25%  { transform: scale(0.88); }
+  100% { transform: scale(1); }
+}
+.click-flash {
+  animation: click-flash 300ms ease-out forwards;
 }

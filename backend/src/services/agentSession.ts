@@ -87,6 +87,12 @@ When all 5 fields are collected (name, birth_date, role, team, start_date):
 - Never guess — ask when uncertain.
 - Do not use markdown formatting in responses.`;
 
+// ─── Name Normalisation ───────────────────────────────────────────────────────
+// Capitalizes first letter of each word, lowercases the rest.
+function normalizeName(raw: string): string {
+  return raw.trim().replace(/\S+/g, w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase());
+}
+
 // ─── Date Normalisation ───────────────────────────────────────────────────────
 // Converts common date formats to DD.MM.YYYY. Returns input unchanged if unrecognised.
 function normalizeDateDDMMYYYY(raw: string): string {
@@ -169,6 +175,8 @@ export class AgentSession {
           try {
             const result = JSON.parse(jsonMatch[0]);
             if (result.status === 'complete' && result.employee) {
+              // Namen normalisieren → Title Case
+              result.employee.name = normalizeName(result.employee.name ?? '');
               // Datumsformat normalisieren → DD.MM.YYYY
               result.employee.birth_date = normalizeDateDDMMYYYY(result.employee.birth_date ?? '');
               result.employee.start_date = normalizeDateDDMMYYYY(result.employee.start_date ?? '');

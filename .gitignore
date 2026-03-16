@@ -26,5 +26,7 @@ Thumbs.db
 
 # Internal working documents
 TODO.md
+CHANGELOG.md
 architecture-diagram.html
 architecture-diagram.md
+smoke-test/

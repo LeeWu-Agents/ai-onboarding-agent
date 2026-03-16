@@ -5,7 +5,6 @@ import { useRouter } from 'next/navigation';
 import { getEmployees, deleteEmployee, updateEmployee, saveEmployee, Employee } from '@/lib/api';
 import { EmployeeData } from '@/lib/liveSession';
 import EmployeeView from '@/components/EmployeeView';
-import AgentBubble from '@/components/AgentBubble';
 
 // ── CSV helpers ───────────────────────────────────────────────────────────────
 
@@ -45,6 +44,15 @@ function parseCSV(text: string): Partial<EmployeeData>[] {
   }).filter((r) => r.name);
 }
 
+// ── Click flash ───────────────────────────────────────────────────────────────
+
+function flashClick(e: React.MouseEvent) {
+  const el = e.currentTarget as HTMLElement;
+  el.classList.remove('click-flash');
+  void el.offsetWidth;
+  el.classList.add('click-flash');
+}
+
 // ── Page ──────────────────────────────────────────────────────────────────────
 
 export default function EmployeesPage() {
@@ -55,6 +63,7 @@ export default function EmployeesPage() {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [importPreview, setImportPreview] = useState<Partial<EmployeeData>[] | null>(null);
   const [importing, setImporting] = useState(false);
+  const [importedCount, setImportedCount] = useState<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const router = useRouter();
 
@@ -116,8 +125,11 @@ export default function EmployeesPage() {
           })
         )
       );
-      setEmployees((prev) => [...results.map((r) => ({ ...r, created_at: new Date().toISOString() })), ...prev]);
+      const count = results.length;
+      setEmployees((prev) => [...results.map((r, i) => ({ ...r, birth_date: importPreview![i].birth_date ?? '', created_at: new Date().toISOString() })), ...prev]);
       setImportPreview(null);
+      setImportedCount(count);
+      setTimeout(() => setImportedCount(null), 4000);
     } catch {
       alert('Import failed. Please check the CSV format.');
     } finally {
@@ -129,34 +141,40 @@ export default function EmployeesPage() {
     <main className="bg-gray-50 flex flex-col items-center px-4 py-12">
       <div className="w-full max-w-2xl">
         {/* Header */}
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex items-start justify-between mb-6 gap-3">
           <div>
             <h1 className="text-2xl font-semibold text-gray-900">Employees</h1>
             <p className="text-gray-500 text-sm mt-0.5">All onboarded employees this session</p>
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2 justify-end">
             {employees.length > 0 && (
               <button
                 onClick={() => exportCSV(employees)}
-                className="bg-gray-100 text-gray-700 px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-200 transition"
+                className="bg-gray-100 text-gray-700 px-3 py-2 rounded-lg text-sm font-medium hover:bg-gray-200 transition"
               >
-                ↓ Export CSV
+                ↓ CSV
               </button>
             )}
             <button
               onClick={() => fileInputRef.current?.click()}
-              className="bg-gray-100 text-gray-700 px-4 py-2 rounded-lg text-sm font-medium hover:bg-gray-200 transition"
+              className="bg-gray-100 text-gray-700 px-3 py-2 rounded-lg text-sm font-medium hover:bg-gray-200 transition"
             >
-              ↑ Import CSV
+              ↑ CSV
             </button>
             <button
               onClick={() => router.push('/')}
-              className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 transition"
+              className="bg-blue-600 text-white px-3 py-2 rounded-lg text-sm font-medium hover:bg-blue-700 transition"
             >
-              + Onboard New
+              + New
             </button>
           </div>
         </div>
+
+        {importedCount !== null && (
+          <div className="mb-4 bg-green-50 border border-green-100 text-green-700 text-sm px-4 py-3 rounded-xl">
+            ✓ {importedCount} employee{importedCount !== 1 ? 's' : ''} imported successfully.
+          </div>
+        )}
 
         {loading && (
           <div className="flex items-center gap-2 text-gray-500 text-sm">
@@ -175,30 +193,44 @@ export default function EmployeesPage() {
 
         {!loading && employees.length > 0 && (
           <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-            <div className="grid grid-cols-5 px-5 py-3 bg-gray-50 border-b border-gray-100 text-xs font-medium text-gray-500 uppercase tracking-wide">
+            {/* Desktop header */}
+            <div className="hidden sm:grid grid-cols-5 px-5 py-3 bg-gray-50 border-b border-gray-100 text-xs font-medium text-gray-500 uppercase tracking-wide">
               <span>Name</span>
               <span>Date of Birth</span>
               <span>Role</span>
               <span>Team</span>
               <span>Start Date</span>
             </div>
+            {/* Mobile header */}
+            <div className="grid sm:hidden grid-cols-2 px-4 py-3 bg-gray-50 border-b border-gray-100 text-xs font-medium text-gray-500 uppercase tracking-wide">
+              <span>Name</span>
+              <span>Team · Role</span>
+            </div>
             {employees.map((emp, i) => (
               <div
                 key={emp.employee_id}
-                onClick={() => setSelected(emp)}
-                className={`grid grid-cols-5 px-5 py-3.5 text-sm items-center cursor-pointer hover:bg-blue-50 transition ${
+                onClick={(e) => { flashClick(e); setSelected(emp); }}
+                className={`cursor-pointer hover:bg-blue-50 transition ${
                   i !== employees.length - 1 ? 'border-b border-gray-50' : ''
                 } ${selected?.employee_id === emp.employee_id ? 'bg-blue-50' : ''}`}
               >
-                <span className="font-medium text-gray-900">{emp.name}</span>
-                <span className="text-gray-600">{emp.birth_date}</span>
-                <span className="text-gray-600">{emp.role}</span>
-                <span>
-                  <span className="bg-blue-50 text-blue-700 text-xs px-2 py-0.5 rounded-full font-medium">
-                    {emp.team}
+                {/* Desktop row */}
+                <div className="hidden sm:grid grid-cols-5 px-5 py-3.5 text-sm items-center">
+                  <span className="font-medium text-gray-900">{emp.name}</span>
+                  <span className="text-gray-600">{emp.birth_date}</span>
+                  <span className="text-gray-600">{emp.role}</span>
+                  <span>
+                    <span className="bg-blue-50 text-blue-700 text-xs px-2 py-0.5 rounded-full font-medium">
+                      {emp.team}
+                    </span>
                   </span>
-                </span>
-                <span className="text-gray-600">{emp.start_date}</span>
+                  <span className="text-gray-600">{emp.start_date}</span>
+                </div>
+                {/* Mobile row */}
+                <div className="grid sm:hidden grid-cols-2 px-4 py-3.5 text-sm items-center gap-1">
+                  <span className="font-medium text-gray-900 truncate">{emp.name}</span>
+                  <span className="text-gray-500 text-xs truncate">{emp.team} · {emp.role}</span>
+                </div>
               </div>
             ))}
           </div>
@@ -282,7 +314,6 @@ export default function EmployeesPage() {
         </div>
       )}
 
-      <AgentBubble />
     </main>
   );
 }

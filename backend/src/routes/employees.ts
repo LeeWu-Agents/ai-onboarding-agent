@@ -5,7 +5,7 @@ const router = Router();
 
 router.post('/', (req, res) => {
   const { session_id, name, birth_date, role, team, start_date } = req.body;
-  if (!session_id || !name || !role || !team || !start_date) {
+  if (!session_id || !name || !role || !team) {
     res.status(400).json({ error: 'Missing required fields' });
     return;
   }

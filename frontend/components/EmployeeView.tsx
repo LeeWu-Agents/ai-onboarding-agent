@@ -1,8 +1,15 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { EmployeeData } from '@/lib/liveSession';
+
+function flashClick(e: React.MouseEvent) {
+  const el = e.currentTarget as HTMLElement;
+  el.classList.remove('click-flash');
+  void el.offsetWidth;
+  el.classList.add('click-flash');
+}
 
 const ROLES = ['Therapist', 'Receptionist', 'Manager', 'Other'];
 const TEAMS = ['Therapy', 'Reception', 'Management'];
@@ -19,15 +26,15 @@ interface Props {
 
 export default function EmployeeView({ employee, mode, onConfirm, onDiscard, onReset, onDelete, onBack }: Props) {
   const [editing, setEditing] = useState(false);
+
+  useEffect(() => {
+    if (mode === 'saved') {
+      window.dispatchEvent(new CustomEvent('agentProactiveEmployee', { detail: { employee } }));
+    }
+  }, []);
   const [draft, setDraft] = useState<EmployeeData>(employee);
   const [contractDeclined, setContractDeclined] = useState(false);
-  const [docsToast, setDocsToast] = useState(false);
   const router = useRouter();
-
-  const showDocsToast = () => {
-    setDocsToast(true);
-    setTimeout(() => setDocsToast(false), 2500);
-  };
 
   const goToContract = () => {
     const params = new URLSearchParams({
@@ -142,21 +149,6 @@ export default function EmployeeView({ employee, mode, onConfirm, onDiscard, onR
           </div>
         )}
 
-        {/* Add Documents */}
-        <div className="mx-6 mb-4 relative">
-          <button
-            onClick={showDocsToast}
-            className="w-full border border-dashed border-gray-200 text-gray-400 text-sm py-2.5 rounded-xl hover:border-blue-300 hover:text-blue-400 transition"
-          >
-            📎 Add Documents (diplomas, ID, photos…)
-          </button>
-          {docsToast && (
-            <div className="absolute left-1/2 -translate-x-1/2 -top-9 bg-gray-800 text-white text-xs px-3 py-1.5 rounded-lg whitespace-nowrap">
-              Coming soon
-            </div>
-          )}
-        </div>
-
         <div className="px-6 pb-5 flex gap-3 flex-wrap">
           {onBack ? (
             <button
@@ -209,19 +201,19 @@ export default function EmployeeView({ employee, mode, onConfirm, onDiscard, onR
       </div>
       <div className="px-6 pb-5 flex gap-3">
         <button
-          onClick={onDiscard}
+          onClick={(e) => { flashClick(e); onDiscard(); }}
           className="bg-gray-100 text-gray-500 py-2.5 px-4 rounded-lg text-sm font-medium hover:bg-red-50 hover:text-red-600 transition"
         >
           ✕ Discard
         </button>
         <button
-          onClick={() => setEditing(true)}
+          onClick={(e) => { flashClick(e); setEditing(true); }}
           className="flex-1 bg-gray-100 text-gray-700 py-2.5 rounded-lg text-sm font-medium hover:bg-amber-50 hover:text-amber-700 transition"
         >
           ✎ Edit
         </button>
         <button
-          onClick={() => onConfirm(employee)}
+          onClick={(e) => { flashClick(e); onConfirm(employee); }}
           className="flex-1 bg-green-600 text-white py-2.5 rounded-lg text-sm font-medium hover:bg-green-700 transition"
         >
           ✓ Confirm

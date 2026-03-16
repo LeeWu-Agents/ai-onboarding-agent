@@ -37,8 +37,15 @@ export async function compressImage(
       canvas.height = h;
       canvas.getContext('2d')!.drawImage(img, 0, 0, w, h);
       const dataUrl = canvas.toDataURL('image/jpeg', quality);
-      resolve({ base64: dataUrl.split(',')[1], mimeType: 'image/jpeg' });
+      // If canvas returns empty (e.g. HEIC decode failed), fall back to original
+      if (!dataUrl || dataUrl === 'data:,') {
+        resolve({ base64, mimeType });
+      } else {
+        resolve({ base64: dataUrl.split(',')[1], mimeType: 'image/jpeg' });
+      }
     };
+    // Fallback: if image can't be decoded (e.g. HEIC on some browsers), send original
+    img.onerror = () => resolve({ base64, mimeType });
     img.src = `data:${mimeType};base64,${base64}`;
   });
 }
@@ -49,6 +56,8 @@ export class OnboardingSession {
   private ws: WebSocket | null = null;
   private onMessage: MessageHandler;
   private buffer = '';
+  private retryCount = 0;
+  private readonly maxRetries = 2;
 
   constructor(onMessage: MessageHandler) {
     this.onMessage = onMessage;
@@ -58,20 +67,36 @@ export class OnboardingSession {
     const wsUrl = (process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3001')
       .replace(/^http/, 'ws') + '/ws/agent';
 
+    this.connect(wsUrl, imageBase64, mimeType);
+  }
+
+  private connect(wsUrl: string, imageBase64: string, mimeType: string): void {
     this.ws = new WebSocket(wsUrl);
 
     this.ws.onopen = () => {
-      // Bild komprimiert senden
+      this.retryCount = 0;
       compressImage(imageBase64, mimeType).then(({ base64, mimeType: mime }) => {
         this.send({ type: 'start', imageBase64: base64, mimeType: mime });
       });
     };
 
     this.ws.onmessage = (event) => this.handleEvent(JSON.parse(event.data));
-    this.ws.onerror = () => this.onMessage({ type: 'error', text: 'Connection error.' });
+
+    this.ws.onerror = () => {
+      if (this.retryCount < this.maxRetries) {
+        this.retryCount++;
+        console.warn(`[Session] Connection error — retrying (${this.retryCount}/${this.maxRetries})…`);
+        setTimeout(() => this.connect(wsUrl, imageBase64, mimeType), 3000);
+      } else {
+        this.onMessage({ type: 'error', text: 'Connection error. Please try again.' });
+      }
+    };
+
     this.ws.onclose = (e) => {
-      if (e.code !== 1000) {
-        console.warn('[Session] WS closed unexpectedly:', e.code, e.reason);
+      if (e.code !== 1000 && this.retryCount < this.maxRetries) {
+        this.retryCount++;
+        console.warn(`[Session] WS closed (${e.code}) — retrying (${this.retryCount}/${this.maxRetries})…`);
+        setTimeout(() => this.connect(wsUrl, imageBase64, mimeType), 3000);
       }
     };
   }

@@ -3,7 +3,6 @@
 import { useEffect, useState, Suspense } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { generateContract } from '@/lib/api';
-import AgentBubble from '@/components/AgentBubble';
 
 function ContractContent() {
   const params = useSearchParams();
@@ -101,7 +100,6 @@ function ContractContent() {
           </div>
         )}
       </div>
-      <AgentBubble />
     </main>
   );
 }
