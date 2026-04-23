@@ -1,3 +1,14 @@
+---
+document: README.md
+type: Projektübersicht
+project: AI Onboarding Agent
+version: 0.17.2
+date: 2026-04-23
+status: archived
+owner: Kropf Systems
+location: C:\Users\lkrop\Desktop\Kropf Systems\GLAC\ai-onboarding-agent\README.md
+---
+
 # AI Onboarding Agent
 
 > Turning real-world documents into structured system data through live, streaming AI dialogue.
@@ -6,12 +17,17 @@ Built for the **Gemini Live Agent Challenge** · Category: **Live Agents**
 
 ---
 
-## Live Demo
+> ## 📦 Archived — April 2026
+>
+> This project was submitted to the **Gemini Live Agent Challenge** (submission: March 16, 2026). After the judging period ended, the hosted cloud resources were decommissioned to stop ongoing costs. The **source code in this repository is intact and unchanged** — the project can be redeployed at any time via `gcloud run deploy --source .` (see [Google Cloud Deployment](#google-cloud-deployment)).
+>
+> The [demo video](#demo-video) remains available and shows the full system in action.
 
-| | URL |
-|---|---|
-| **Frontend** | https://glac-frontend-842528390248.us-central1.run.app |
-| **Backend** | https://glac-backend-842528390248.us-central1.run.app/health |
+---
+
+## Demo
+
+Live demo has been decommissioned post-judging. See the [Demo Video](#demo-video) for a walk-through of the full system, or follow the [Local Setup](#local-setup) instructions to run it yourself.
 
 ---
 
@@ -36,9 +52,7 @@ The **AI Agent panel** (bottom-right) is available on every page at all times. O
 
 ## Architecture
 
-![Architecture Diagram](architecture-diagram%20definitiv.png)
-
-> Interactive version: open `architecture-diagram-kropf.html` in a browser.
+![Architecture Diagram](architecture-diagram.png)
 
 **Onboarding data flow:**
 
@@ -80,23 +94,28 @@ HR Staff
 
 ## Google Cloud Deployment
 
-Both services are deployed on **Google Cloud Run** (region: `us-central1`, project: `gen-lang-client-0014383010`).
+The project was originally deployed on **Google Cloud Run** (region: `us-central1`). The deployed services have been decommissioned — the commands below re-create them from the source.
 
-**Redeploy after changes:**
+**Deploy from scratch:**
 
 ```bash
-# Backend
+# Backend (first pass — get the backend URL)
 cd backend
 gcloud run deploy glac-backend \
   --source . --region us-central1 --platform managed --allow-unauthenticated \
-  --set-env-vars "GEMINI_API_KEY=your_key,FRONTEND_URL=https://glac-frontend-842528390248.us-central1.run.app" \
+  --set-env-vars "GEMINI_API_KEY=your_key,FRONTEND_URL=https://placeholder" \
   --port 3001
 
 # Frontend
-cd frontend
+cd ../frontend
 gcloud run deploy glac-frontend \
   --source . --region us-central1 --platform managed --allow-unauthenticated \
   --port 3000
+
+# Backend (second pass — update FRONTEND_URL with the real frontend URL for CORS)
+cd ../backend
+gcloud run services update glac-backend --region us-central1 \
+  --set-env-vars "GEMINI_API_KEY=your_key,FRONTEND_URL=<actual-frontend-url>"
 ```
 
 Both services use multi-stage `Dockerfile`s (`node:20-alpine`). The frontend uses Next.js `standalone` output for a minimal production image.
@@ -177,8 +196,7 @@ Open [http://localhost:3000](http://localhost:3000) in your browser.
 ai-onboarding-agent/
 ├── README.md
 ├── CHANGELOG.md
-├── architecture-diagram definitiv.png   ← Architecture diagram (PNG)
-├── architecture-diagram-kropf.html      ← Interactive architecture (open in browser)
+├── architecture-diagram.png             ← Architecture diagram
 ├── frontend/
 │   ├── Dockerfile                       ← Multi-stage, Next.js standalone
 │   ├── app/
